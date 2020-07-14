@@ -1,14 +1,15 @@
+import 'dart:io';
+
 import 'package:amap_location/amap_location.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/all_people_point_entity.dart';
+import 'package:flutter_app/http_request.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:latlong/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:provider/provider.dart';
 
-void main() {
-  runApp(MyApp());
-}
+void main() => runApp(MyApp());
 
 class MyApp extends StatelessWidget {
   @override
@@ -34,6 +35,35 @@ class _MapView extends State<MapView> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     getLocation();
+    initAllPoint();
+  }
+
+  var allPoint = List<AllPeoplePointData>();
+  var markers = List<Marker>();
+
+  initAllPoint() async {
+    allPoint.clear();
+    var response = await HttpRequest.request<AllPeoplePointEntity>("http://192.168.124.18:8080/test/index");
+    allPoint.addAll(response.data);
+    initMarkers();
+  }
+
+  initMarkers() {
+    markers.clear();
+    var length = Colors.primaries.length;
+    allPoint.forEach((element) {
+      markers.add(Marker(
+        point: new LatLng(element.latitude, element.longitude),
+        builder: (_) {
+          return Icon(
+            Icons.location_on,
+            size: 24,
+            color: Colors.primaries[element.userId % length],
+          );
+        },
+      ));
+    });
+    setState(() => null);
   }
 
   ///地图中心移动动画
@@ -54,6 +84,7 @@ class _MapView extends State<MapView> with TickerProviderStateMixin {
   }
 
   MapController mapController = MapController();
+
   LatLng _center = new LatLng(39.90, 116.40);
 
   set center(AMapLocation aMapLocation) {
@@ -61,6 +92,7 @@ class _MapView extends State<MapView> with TickerProviderStateMixin {
     _center.latitude = aMapLocation.latitude;
   }
 
+  //得到当前位置坐标
   getLocation() async {
     await AMapLocationClient.startup(new AMapLocationOption(desiredAccuracy: CLLocationAccuracy.kCLLocationAccuracyHundredMeters));
     //请求定位权限
@@ -72,6 +104,7 @@ class _MapView extends State<MapView> with TickerProviderStateMixin {
       //amap获取当前位置
       await AMapLocationClient.getLocation(true).then((aMapLocation) {
         center = aMapLocation;
+        print("${aMapLocation.longitude}:::${aMapLocation.latitude}");
         _animatedMapMove(mapController, _center, 13);
       });
     } else {
@@ -86,7 +119,10 @@ class _MapView extends State<MapView> with TickerProviderStateMixin {
       body: _buildFlutterMap(),
       floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
       floatingActionButton: FloatingActionButton(
-        onPressed: () => getLocation(),
+        onPressed: () {
+          getLocation();
+          initAllPoint();
+        },
         child: Icon(Icons.my_location),
       ),
     );
@@ -107,15 +143,7 @@ class _MapView extends State<MapView> with TickerProviderStateMixin {
         new TileLayerOptions(urlTemplate: "http://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}", subdomains: ["1", "2", "3", "4"]),
         //地图标记
         new MarkerLayerOptions(
-          markers: [
-            new Marker(
-              point: _center,
-              builder: (_) => Icon(
-                Icons.location_on,
-                size: 24,
-              ),
-            ),
-          ],
+          markers: markers,
         ),
       ],
     );
