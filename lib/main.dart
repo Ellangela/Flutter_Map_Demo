@@ -5,9 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_app/all_people_point_entity.dart';
 import 'package:flutter_app/http_request.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_marker_popup/flutter_map_marker_popup.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:latlong/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
+
+import 'MsgPopup.dart';
 
 void main() => runApp(MyApp());
 
@@ -31,34 +34,39 @@ class MapView extends StatefulWidget {
 }
 
 class _MapView extends State<MapView> with TickerProviderStateMixin {
+  var allPoint = List<AllPeoplePointData>();
+  var markers = List<Marker>();
+  final PopupController _popupLayerController = PopupController();
+
   @override
   void initState() {
     super.initState();
     getLocation();
-    initAllPoint();
+    updateAllPoint();
   }
 
-  var allPoint = List<AllPeoplePointData>();
-  var markers = List<Marker>();
-
-  initAllPoint() async {
-    allPoint.clear();
-    var response = await HttpRequest.request<AllPeoplePointEntity>("http://192.168.124.18:8080/test/index");
-    allPoint.addAll(response.data);
-    initMarkers();
+  updateAllPoint() async {
+    await HttpRequest.request<AllPeoplePointEntity>("http://35.201.146.182:8080/test/index").then((value) {
+      _center.latitude = value.data[0].latitude;
+      _center.longitude = value.data[0].longitude;
+      allPoint = value.data;
+    });
+    updateMarkers();
+    Future.delayed(const Duration(seconds: 1), () {
+      updateAllPoint();
+    });
   }
 
-  initMarkers() {
+  updateMarkers() {
     markers.clear();
-    var length = Colors.primaries.length;
-    allPoint.forEach((element) {
+    allPoint.forEach((allPeoplePointData) {
       markers.add(Marker(
-        point: new LatLng(element.latitude, element.longitude),
+        point: new LatLng(allPeoplePointData.latitude, allPeoplePointData.longitude),
         builder: (_) {
           return Icon(
             Icons.location_on,
             size: 24,
-            color: Colors.primaries[element.userId % length],
+            color: Colors.primaries[allPeoplePointData.userId % Colors.primaries.length],
           );
         },
       ));
@@ -87,11 +95,6 @@ class _MapView extends State<MapView> with TickerProviderStateMixin {
 
   LatLng _center = new LatLng(39.90, 116.40);
 
-  set center(AMapLocation aMapLocation) {
-    _center.longitude = aMapLocation.longitude;
-    _center.latitude = aMapLocation.latitude;
-  }
-
   //得到当前位置坐标
   getLocation() async {
     await AMapLocationClient.startup(new AMapLocationOption(desiredAccuracy: CLLocationAccuracy.kCLLocationAccuracyHundredMeters));
@@ -103,8 +106,6 @@ class _MapView extends State<MapView> with TickerProviderStateMixin {
     if (permission == PermissionStatus.granted) {
       //amap获取当前位置
       await AMapLocationClient.getLocation(true).then((aMapLocation) {
-        center = aMapLocation;
-        print("${aMapLocation.longitude}:::${aMapLocation.latitude}");
         _animatedMapMove(mapController, _center, 13);
       });
     } else {
@@ -121,7 +122,7 @@ class _MapView extends State<MapView> with TickerProviderStateMixin {
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           getLocation();
-          initAllPoint();
+          updateAllPoint();
         },
         child: Icon(Icons.my_location),
       ),
@@ -133,19 +134,37 @@ class _MapView extends State<MapView> with TickerProviderStateMixin {
   FlutterMap _buildFlutterMap() {
     return new FlutterMap(
       mapController: mapController,
-      options: new MapOptions(
-        center: _center,
-      ),
-      layers: [
+      options: new MapOptions(center: _center, plugins: [PopupMarkerPlugin()], onTap: (_) => _popupLayerController.hidePopup()),
+      layers: <LayerOptions>[
         //卫星地图
         //new TileLayerOptions(urlTemplate: "http://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}", subdomains: ["1", "2", "3", "4"]),
         //平面地图
         new TileLayerOptions(urlTemplate: "http://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}", subdomains: ["1", "2", "3", "4"]),
-        //地图标记
-        new MarkerLayerOptions(
+        new PopupMarkerLayerOptions(
+          popupBuilder: (BuildContext _, Marker marker) {
+            return MsgPopup(marker);
+          },
           markers: markers,
-        ),
+          popupSnap: PopupSnap.top,
+          popupController: _popupLayerController,
+        )
       ],
+    );
+  }
+}
+
+class PopupMsg extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 4.0,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(4))),
+      color: Colors.white,
+      child: SizedBox(
+        width: 120,
+        height: 50,
+        child: null,
+      ),
     );
   }
 }
